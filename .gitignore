@@ -62,3 +62,11 @@ __pycache__/
 venv/
 env/
 .DS_Store
+
+# Generated tracking cache and model outputs
+/cache/
+/out/
+
+# Python bytecode
+__pycache__/
+*.pyc

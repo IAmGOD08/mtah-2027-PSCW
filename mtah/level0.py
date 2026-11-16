@@ -32,6 +32,7 @@ from mtah.cache import load_cache  # noqa: E402
 OUT_DIR = os.path.join(ROOT, "out")
 
 HOME, AWAY = 0, 1
+from mtah.deadball import detect as detect_deadball
 
 
 def evidence(players, ball, team, alpha=0.25, cap=2.0):
@@ -83,15 +84,18 @@ def decode(z, lam=10.0):
     return out
 
 
-def run(lam=10.0, alpha=0.25, cap=2.0, name="level0"):
+def run(lam=20.0, alpha=0.25, cap=2.0, name="level0_db", use_deadball=True):
     players, ball, team = load_cache()
     z = evidence(players, ball, team, alpha=alpha, cap=cap)
     codes = decode(z, lam=lam)
     labels = np.where(codes == HOME, "H", "A")
+    if use_deadball:
+        dead = detect_deadball(players, ball)
+        labels = np.where(dead, "D", labels)
     os.makedirs(OUT_DIR, exist_ok=True)
     path = B.write_submission(os.path.join(OUT_DIR, f"{name}.csv"), labels)
     counts = {lab: int(np.sum(labels == lab)) for lab in ("H", "A", "D")}
-    print(f"{name}: lam={lam} alpha={alpha} cap={cap}")
+    print(f"{name}: lam={lam} deadball={use_deadball}")
     print(f"  H={counts['H']} A={counts['A']} D={counts['D']}")
     print(f"  wrote {path}")
     return path, labels
@@ -105,3 +109,23 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="level0")
     args = parser.parse_args()
     run(lam=args.lam, alpha=args.alpha, cap=args.cap, name=args.name)
+
+
+from mtah.deadball import detect as detect_deadball
+
+
+def run(lam=20.0, alpha=0.25, cap=2.0, name="level0_db", use_deadball=True):
+    players, ball, team = load_cache()
+    z = evidence(players, ball, team, alpha=alpha, cap=cap)
+    codes = decode(z, lam=lam)
+    labels = np.where(codes == HOME, "H", "A")
+    if use_deadball:
+        dead = detect_deadball(players, ball)
+        labels = np.where(dead, "D", labels)
+    os.makedirs(OUT_DIR, exist_ok=True)
+    path = B.write_submission(os.path.join(OUT_DIR, f"{name}.csv"), labels)
+    counts = {lab: int(np.sum(labels == lab)) for lab in ("H", "A", "D")}
+    print(f"{name}: lam={lam} deadball={use_deadball}")
+    print(f"  H={counts['H']} A={counts['A']} D={counts['D']}")
+    print(f"  wrote {path}")
+    return path, labels

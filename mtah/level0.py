@@ -25,6 +25,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
 
+from mtah.deadball import detect as detect_deadball
+
 from games import GAME, GAMES  # noqa: E402
 import baseline as B  # noqa: E402
 from mtah.cache import load_cache  # noqa: E402
@@ -51,51 +53,62 @@ def evidence(players, ball, team, alpha=0.25, cap=2.0):
     return z
 
 
-def decode(z, lam=10.0):
-    """Viterbi over {H, A} with switching cost lam.
-
-    z is the per-frame log-odds favouring home. lam is the cost of switching
-    state. Frames with z=0 carry the previous state through, which is what
-    makes this better than smoothing for gaps.
-    """
-    n = len(z)
-    back_h = np.zeros(n, dtype=bool)
-    back_a = np.zeros(n, dtype=bool)
-    score_h = score_a = 0.0
+def decode3(z_ha, z_d, lam=20.0, lam_d=15.0):
+    """Three-state Viterbi over {H, A, D}."""
+    n = len(z_ha)
+    NEG = -1e9
+    score = np.array([0.0, 0.0, NEG])
+    back = np.zeros((n, 3), dtype=np.int8)
 
     for t in range(n):
-        e = 0.5 * z[t]  # split log-odds between the two states
-        from_a = score_a - lam
-        from_h = score_h - lam
-        stay_h = score_h + e
-        stay_a = score_a - e
-        back_h[t] = from_a > stay_h
-        back_a[t] = from_h > stay_a
-        score_h = max(from_a, stay_h)
-        score_a = max(from_h, stay_a)
+        e_ha = 0.5 * z_ha[t]
+        e_d = z_d[t]
+        new_score = np.empty(3)
+        for s in range(3):
+            best_val, best_prev = NEG, 0
+            for p in range(3):
+                cost = 0.0
+                if p != s:
+                    cost = lam_d if (s == 2 or p == 2) else lam
+                val = score[p] - cost
+                if val > best_val:
+                    best_val, best_prev = val, p
+            if s == 0:
+                new_score[s] = best_val + e_ha
+            elif s == 1:
+                new_score[s] = best_val - e_ha
+            else:
+                new_score[s] = best_val + e_d
+            back[t][s] = best_prev
+        score = new_score
 
-    state = HOME if score_h >= score_a else AWAY
+    state = int(np.argmax(score))
     out = np.empty(n, dtype=np.int8)
     for t in range(n - 1, -1, -1):
         out[t] = state
-        back = back_h if state == HOME else back_a
-        if back[t]:
-            state = AWAY if state == HOME else HOME
+        state = back[t][state]
     return out
 
 
-def run(lam=20.0, alpha=0.25, cap=2.0, name="level0_db", use_deadball=True):
+def dead_evidence(dead_mask, strength=1.0):
+    """Convert a boolean dead-ball mask into a per-frame evidence score.
+
+    Positive = evidence for dead ball. 0 = no evidence either way.
+    """
+    return np.where(dead_mask, strength, 0.0).astype(np.float32)
+
+
+def run(lam=20.0, lam_d=15.0, alpha=0.25, cap=2.0, name="level0_3state"):
     players, ball, team = load_cache()
-    z = evidence(players, ball, team, alpha=alpha, cap=cap)
-    codes = decode(z, lam=lam)
-    labels = np.where(codes == HOME, "H", "A")
-    if use_deadball:
-        dead = detect_deadball(players, ball)
-        labels = np.where(dead, "D", labels)
+    z_ha = evidence(players, ball, team, alpha=alpha, cap=cap)
+    dead = detect_deadball(players, ball)
+    z_d = dead_evidence(dead, strength=1.0)
+    codes = decode3(z_ha, z_d, lam=lam, lam_d=lam_d)
+    labels = np.array(["H", "A", "D"])[codes]
     os.makedirs(OUT_DIR, exist_ok=True)
     path = B.write_submission(os.path.join(OUT_DIR, f"{name}.csv"), labels)
     counts = {lab: int(np.sum(labels == lab)) for lab in ("H", "A", "D")}
-    print(f"{name}: lam={lam} deadball={use_deadball}")
+    print(f"{name}: lam={lam} lam_d={lam_d}")
     print(f"  H={counts['H']} A={counts['A']} D={counts['D']}")
     print(f"  wrote {path}")
     return path, labels
@@ -103,29 +116,10 @@ def run(lam=20.0, alpha=0.25, cap=2.0, name="level0_db", use_deadball=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--lam", type=float, default=10.0)
+    parser.add_argument("--lam", type=float, default=20.0)
+    parser.add_argument("--lam_d", type=float, default=15.0)
     parser.add_argument("--alpha", type=float, default=0.25)
     parser.add_argument("--cap", type=float, default=2.0)
-    parser.add_argument("--name", default="level0")
+    parser.add_argument("--name", default="level0_3state")
     args = parser.parse_args()
-    run(lam=args.lam, alpha=args.alpha, cap=args.cap, name=args.name)
-
-
-from mtah.deadball import detect as detect_deadball
-
-
-def run(lam=20.0, alpha=0.25, cap=2.0, name="level0_db", use_deadball=True):
-    players, ball, team = load_cache()
-    z = evidence(players, ball, team, alpha=alpha, cap=cap)
-    codes = decode(z, lam=lam)
-    labels = np.where(codes == HOME, "H", "A")
-    if use_deadball:
-        dead = detect_deadball(players, ball)
-        labels = np.where(dead, "D", labels)
-    os.makedirs(OUT_DIR, exist_ok=True)
-    path = B.write_submission(os.path.join(OUT_DIR, f"{name}.csv"), labels)
-    counts = {lab: int(np.sum(labels == lab)) for lab in ("H", "A", "D")}
-    print(f"{name}: lam={lam} deadball={use_deadball}")
-    print(f"  H={counts['H']} A={counts['A']} D={counts['D']}")
-    print(f"  wrote {path}")
-    return path, labels
+    run(lam=args.lam, lam_d=args.lam_d, alpha=args.alpha, cap=args.cap, name=args.name)

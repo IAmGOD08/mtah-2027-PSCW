@@ -75,3 +75,7 @@ __pycache__/
 
 selftest_csv/
 selftest_csv/
+submission_fallback.csv
+starter/.ipynb_checkpoints/
+submission_fallback.csv
+starter/.ipynb_checkpoints/

@@ -70,3 +70,8 @@ env/
 # Python bytecode
 __pycache__/
 *.pyc
+
+
+
+selftest_csv/
+selftest_csv/

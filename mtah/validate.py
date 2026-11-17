@@ -21,6 +21,13 @@ Tests
                 reverse back, agreement with the forward decode (>= 0.97).
   compare       two labellings: agreement, spellF1 both ways, counts.
 
+Revision 1 (declared after T1, before any T0R output): the dead-fraction
+check is an upper bound only (<= 0.35). The 0.15 lower bound assumed a
+detector that sees every stoppage; with the learned dead-ball model killed,
+every remaining D source (restart tags, observed out-of-bounds) covers a
+subset, so the lower bound penalised partial coverage rather than error.
+Possession, median-live and median-dead bands are unchanged.
+
 Kill criteria for a tier (Phase A, with the home-share check replaced by
 pseudo-label agreement because pseudo frames over-sample short-passing
 possession): bands, pseudo agreement >= 0.90, reversal >= 0.97, pipeline
@@ -93,9 +100,15 @@ def _bands(st) -> list:
         lo, hi = BANDS[key]
         out.append((f"{key} in [{lo},{hi}]", lo <= st[key] <= hi))
     if st["dead_fraction"] > 0:
-        for key in ("dead_fraction", "median_dead_s"):
-            lo, hi = BANDS[key]
-            out.append((f"{key} in [{lo},{hi}]", lo <= st[key] <= hi))
+        hi = BANDS["dead_fraction"][1]
+        out.append(
+            (
+                f"dead_fraction <= {hi} (rev 1: upper bound only)",
+                st["dead_fraction"] <= hi,
+            )
+        )
+        lo, hi = BANDS["median_dead_s"]
+        out.append((f"median_dead_s in [{lo},{hi}]", lo <= st["median_dead_s"] <= hi))
     return out
 
 

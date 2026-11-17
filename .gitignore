@@ -79,3 +79,5 @@ submission_fallback.csv
 starter/.ipynb_checkpoints/
 submission_fallback.csv
 starter/.ipynb_checkpoints/
+cache/
+out/
